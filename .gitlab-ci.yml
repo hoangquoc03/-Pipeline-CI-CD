@@ -3,6 +3,7 @@ image: gradle:7.6-jdk17
 stages:
   - test
   - build
+  - dockerize
 
 before_script:
   - chmod +x ./gradlew
@@ -27,3 +28,20 @@ build_job:
     paths:
       - build/libs/*.jar
     expire_in: 1 day
+
+dockerize_job:
+  stage: dockerize
+  image: docker:27-cli
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script: []
+  dependencies:
+    - build_job
+  script:
+    - echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
+    - docker build -t "$DOCKER_USERNAME/payment-service:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$DOCKER_USERNAME/payment-service:$CI_COMMIT_SHORT_SHA"
