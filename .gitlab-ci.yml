@@ -14,19 +14,29 @@ test_job:
     - name: postgres:14-alpine
       alias: postgres
   variables:
-    POSTGRES_DB: hr_management_test
-    POSTGRES_USER: ci_user
-    POSTGRES_PASSWORD: ci_password
+    POSTGRES_DB: cart_service_test
+    POSTGRES_USER: cart_user
+    POSTGRES_PASSWORD: cart_password
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cart_service_test
+    SPRING_DATASOURCE_USERNAME: cart_user
+    SPRING_DATASOURCE_PASSWORD: cart_password
   script:
     - ./gradlew test
+  allow_failure: false
 
 build_job:
   stage: build
   script:
     - ./gradlew build -x test
+    - |
+      set -eu
+      jar_file="$(find build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-plain.jar' -print -quit)"
+      test -n "$jar_file"
+      mkdir -p build/docker
+      cp "$jar_file" build/docker/app.jar
   artifacts:
     paths:
-      - build/libs/*.jar
+      - build/docker/app.jar
     expire_in: 1 day
 
 dockerize_job:
@@ -42,6 +52,10 @@ dockerize_job:
   dependencies:
     - build_job
   script:
-    - echo "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
-    - docker build -t "$DOCKER_USERNAME/payment-service:$CI_COMMIT_SHORT_SHA" .
-    - docker push "$DOCKER_USERNAME/payment-service:$CI_COMMIT_SHORT_SHA"
+    - test -n "$DOCKER_USERNAME" && test -n "$DOCKER_PASSWORD"
+    - printf '%s' "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
+    - docker build -t "$DOCKER_USERNAME/cart-service:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$DOCKER_USERNAME/cart-service:$CI_COMMIT_SHORT_SHA"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - when: never
